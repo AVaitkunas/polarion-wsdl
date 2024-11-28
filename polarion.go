@@ -69,7 +69,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	sessionHeader := newSessionHeader(sessionID)
 
 	sessionClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, sessionEndpoint),
+		sessionEndpoint,
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
@@ -77,7 +77,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	sessionWS := session_ws.NewSessionWebService(sessionClient)
 
 	trackerClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, trackerEndpoint),
+		trackerEndpoint,
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
@@ -85,7 +85,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	trackerWS := tracker_ws.NewTrackerWebService(trackerClient)
 
 	testClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, testsEndpoint),
+		testsEndpoint,
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
