@@ -29,7 +29,7 @@ type loginWithTokenBody struct {
 }
 
 // raw login using custom requests to get session ID
-func loginWithTokenRaw(httpClient *http.Client, username, token string) (string, error) {
+func loginWithTokenRaw(httpClient *http.Client, sessionEndpoint, username, token string) (string, error) {
 	loginRequestEnvelope := loginWithTokenEnvelope{
 		Body: loginWithTokenBody{
 			LogInWithToken: session_ws.LogInWithToken{
@@ -47,7 +47,7 @@ func loginWithTokenRaw(httpClient *http.Client, username, token string) (string,
 
 	responseBodyBytes := makeLoginRequest(
 		httpClient,
-		SESSION_ENDPOINT,
+		sessionEndpoint,
 		"logInWithToken",
 		string(envelopeBytes),
 	)

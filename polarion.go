@@ -15,14 +15,7 @@ import (
 	"github.com/hooklift/gowsdl/soap"
 )
 
-const (
-	TIMEOUT = time.Second * 10
-
-	SESSION_ENDPOINT = "polarion/ws/services/SessionWebService?wsdl"
-	PROJECT_ENDPOINT = "polarion/ws/services/ProjectWebService?wsdl"
-	TRACKER_ENDPOINT = "polarion/ws/services/TrackerWebService?wsdl"
-	TESTS_ENDPOINT   = "polarion/ws/services/TestManagementWebService?wsdl"
-)
+const TIMEOUT = time.Second * 10
 
 // soap envelope header containing session ID
 // should be included in all requests to API (handled in Polarion constuctor)
@@ -54,6 +47,9 @@ type Polarion struct {
 }
 
 func NewPolarion(polarion_url, username, accessToken string) *Polarion {
+	sessionEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/SessionWebService?wsdl")
+	trackerEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/TrackerWebService?wsdl")
+	testsEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/TestManagementWebService?wsdl")
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -63,7 +59,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 		},
 	}
 
-	sessionID, err := loginWithTokenRaw(httpClient, username, accessToken)
+	sessionID, err := loginWithTokenRaw(httpClient, sessionEndpoint, username, accessToken)
 	if err != nil {
 		log.Printf("failed to login and create new session for %v: %v", username, err)
 		return nil
@@ -73,7 +69,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	sessionHeader := newSessionHeader(sessionID)
 
 	sessionClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, SESSION_ENDPOINT),
+		fmt.Sprintf("%s/%s", polarion_url, sessionEndpoint),
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
@@ -81,7 +77,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	sessionWS := session_ws.NewSessionWebService(sessionClient)
 
 	trackerClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, TRACKER_ENDPOINT),
+		fmt.Sprintf("%s/%s", polarion_url, trackerEndpoint),
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
@@ -89,7 +85,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	trackerWS := tracker_ws.NewTrackerWebService(trackerClient)
 
 	testClient := soap.NewClient(
-		fmt.Sprintf("%s/%s", polarion_url, TESTS_ENDPOINT),
+		fmt.Sprintf("%s/%s", polarion_url, testsEndpoint),
 		soap.WithHTTPClient(httpClient),
 		soap.WithTimeout(TIMEOUT),
 	)
