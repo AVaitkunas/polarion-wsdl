@@ -61,6 +61,10 @@ func loginWithTokenRaw(httpClient *http.Client, sessionEndpoint, username, token
 		return "", fmt.Errorf("failed to unmarshal login response xml %v", err)
 	}
 
+	if responseEnvelope.Header == nil{
+		return "", fmt.Errorf("failed to login to Polarion response envelope header is nil",)
+	}
+
 	return responseEnvelope.Header.SessionID, nil
 }
 
