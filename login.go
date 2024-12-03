@@ -9,8 +9,6 @@ import (
 	"net/http"
 )
 
-// 3 struct above is used for loginRaw only
-
 type loginWithTokenEnvelope struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
 	Header  *loginResponseHeader
@@ -61,8 +59,8 @@ func loginWithTokenRaw(httpClient *http.Client, sessionEndpoint, username, token
 		return "", fmt.Errorf("failed to unmarshal login response xml %v", err)
 	}
 
-	if responseEnvelope.Header == nil{
-		return "", fmt.Errorf("failed to login to Polarion response envelope header is nil",)
+	if responseEnvelope.Header == nil {
+		return "", fmt.Errorf("failed to login to Polarion response envelope header is nil")
 	}
 
 	return responseEnvelope.Header.SessionID, nil
@@ -78,6 +76,9 @@ func makeLoginRequest(client *http.Client, url, action, payload string) ([]byte,
 	res, err := client.Do(req)
 	if err != nil {
 		return []byte{}, fmt.Errorf("failed to make login request %v", err)
+	}
+	if res.StatusCode != 200 {
+		return []byte{}, fmt.Errorf("failed to make login request: response status: %d", res.StatusCode)
 	}
 
 	responseBodyBytes, err := io.ReadAll(res.Body)
