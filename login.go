@@ -51,6 +51,10 @@ func loginWithTokenRaw(httpClient *http.Client, sessionEndpoint, username, token
 		string(envelopeBytes),
 	)
 
+	if err != nil {
+		return "", err
+	}
+
 	responseEnvelope := loginWithTokenEnvelope{}
 	err = xml.Unmarshal(responseBodyBytes, &responseEnvelope)
 	if err != nil {
