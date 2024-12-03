@@ -1,12 +1,11 @@
 package polarion_wsdl
 
 import (
-	"github.com/AVaitkunas/polarion-wsdl/session_ws"
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"github.com/AVaitkunas/polarion-wsdl/session_ws"
+	"io"
 	"net/http"
 )
 
@@ -41,43 +40,47 @@ func loginWithTokenRaw(httpClient *http.Client, sessionEndpoint, username, token
 	}
 	envelopeBytes, err := xml.MarshalIndent(loginRequestEnvelope, "", "  ")
 	if err != nil {
-		log.Printf("error marshaling login request envelope %v", err)
-		return "", err
+
+		return "", fmt.Errorf("failed to marshal login request envelope %v", err)
 	}
 
-	responseBodyBytes := makeLoginRequest(
+	responseBodyBytes, err := makeLoginRequest(
 		httpClient,
 		sessionEndpoint,
 		"logInWithToken",
 		string(envelopeBytes),
 	)
 
+	if err != nil {
+		return "", err
+	}
+
 	responseEnvelope := loginWithTokenEnvelope{}
 	err = xml.Unmarshal(responseBodyBytes, &responseEnvelope)
 	if err != nil {
-		log.Printf("failed to unmarshal response xml %v", err)
-		return "", err
+		return "", fmt.Errorf("failed to unmarshal login response xml %v", err)
 	}
 
 	return responseEnvelope.Header.SessionID, nil
 }
 
-func makeLoginRequest(client *http.Client, url, action, payload string) []byte {
+func makeLoginRequest(client *http.Client, url, action, payload string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(payload)))
 	if err != nil {
-		log.Printf("error on creating request object %v", err.Error())
-		return []byte{}
+		return []byte{}, fmt.Errorf("failed to create login request object %v", err)
 	}
 	req.Header.Set("SOAPAction", fmt.Sprintf("urn:%s", action))
 
 	res, err := client.Do(req)
 	if err != nil {
-		log.Printf("error on dispatching request %v", err.Error())
-		return []byte{}
+		return []byte{}, fmt.Errorf("failed to make login request %v", err)
 	}
 
-	responseBodyBytes, _ := ioutil.ReadAll(res.Body)
+	responseBodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return []byte{}, fmt.Errorf("failed to read login response body %v", err)
+	}
 	defer res.Body.Close()
 
-	return responseBodyBytes
+	return responseBodyBytes, nil
 }
