@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 
 	"github.com/hooklift/gowsdl/soap"
 )
-
-const TIMEOUT = time.Second * 10
 
 // soap envelope header containing session ID
 // should be included in all requests to API (handled in Polarion constuctor)
@@ -46,7 +43,7 @@ type Polarion struct {
 	TestWS        test_ws.TestManagementWebService
 }
 
-func NewPolarion(polarion_url, username, accessToken string) *Polarion {
+func NewPolarion(polarion_url, username, accessToken string, timeout time.Duration) (*Polarion, error) {
 	sessionEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/SessionWebService?wsdl")
 	trackerEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/TrackerWebService?wsdl")
 	testsEndpoint := fmt.Sprintf("%s/%s", polarion_url, "polarion/ws/services/TestManagementWebService?wsdl")
@@ -61,17 +58,18 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 
 	sessionID, err := loginWithTokenRaw(httpClient, sessionEndpoint, username, accessToken)
 	if err != nil {
-		log.Printf("failed to login and create new session for %v: %v", username, err)
-		return nil
+		return nil, fmt.Errorf(
+			"failed to login and create new session for %v: %v",
+			username, err,
+		)
 	}
 
-	fmt.Printf("%v sessionID: '%v'\n", username, sessionID)
 	sessionHeader := newSessionHeader(sessionID)
 
 	sessionClient := soap.NewClient(
 		sessionEndpoint,
 		soap.WithHTTPClient(httpClient),
-		soap.WithTimeout(TIMEOUT),
+		soap.WithTimeout(timeout),
 	)
 	sessionClient.AddHeader(sessionHeader)
 	sessionWS := session_ws.NewSessionWebService(sessionClient)
@@ -79,7 +77,7 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	trackerClient := soap.NewClient(
 		trackerEndpoint,
 		soap.WithHTTPClient(httpClient),
-		soap.WithTimeout(TIMEOUT),
+		soap.WithTimeout(timeout),
 	)
 	trackerClient.AddHeader(sessionHeader)
 	trackerWS := tracker_ws.NewTrackerWebService(trackerClient)
@@ -87,12 +85,12 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 	testClient := soap.NewClient(
 		testsEndpoint,
 		soap.WithHTTPClient(httpClient),
-		soap.WithTimeout(TIMEOUT),
+		soap.WithTimeout(timeout),
 	)
 	testClient.AddHeader(sessionHeader)
 	testWS := test_ws.NewTestManagementWebService(testClient)
 
-	return &Polarion{
+	polarion := &Polarion{
 		HttpClient:    httpClient,
 		SessionClient: sessionClient,
 		SessionWS:     sessionWS,
@@ -101,17 +99,22 @@ func NewPolarion(polarion_url, username, accessToken string) *Polarion {
 		TestClient:    testClient,
 		TestWS:        testWS,
 	}
+
+	return polarion, nil
 }
 
-func (p *Polarion) IsLoggedIn() bool {
+func (p *Polarion) IsLoggedIn() (bool, error) {
 	req := session_ws.HasSubject{}
 	resp, err := p.SessionWS.HasSubject(&req)
 	if err != nil {
-		log.Printf("Error checking if logged in: %v", err)
-		return false
+		return false, fmt.Errorf("failed to check login status in Poalrion: %v", err)
 	}
 
-	return resp.HasSubjectReturn
+	if resp == nil {
+		return false, fmt.Errorf("unexpected nil response while checking login status in Polarion")
+	}
+
+	return resp.HasSubjectReturn, nil
 }
 
 func (p *Polarion) GetWorkItemById(
@@ -180,9 +183,8 @@ func (p *Polarion) GetWorkItemsCount(query string) (int, error) {
 
 	resp, err := p.TrackerWS.GetWorkItemsCount(&req)
 	if err != nil {
-		return 0, fmt.Errorf("error querying work items: %v", err)
+		return -1, fmt.Errorf("error querying work items: %v", err)
 	}
-
 	return int(resp.GetWorkItemsCountReturn), nil
 }
 
@@ -228,13 +230,14 @@ func (p *Polarion) QueryTestRecords(
 		Query: query,
 		Sort:  sortField,
 	}
+
 	if limit > 0 {
 		req.Limit = int32(limit)
 	}
 
 	resp, err := p.TestWS.SearchTestRecords(&req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("test records search failed: %v", err)
 	}
 	return resp.SearchTestRecordsReturn, nil
 }
@@ -246,7 +249,7 @@ func (p *Polarion) GetTestRunById(projectID, testRunID string) (*test_ws.TestRun
 	}
 	resp, err := p.TestWS.GetTestRunById(&req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get test run by id: %v", err)
 	}
 
 	return resp.GetTestRunByIdReturn, nil
@@ -263,25 +266,25 @@ func (p *Polarion) QueryTestRuns(
 	}
 	resp, err := p.TestWS.SearchTestRunsWithFields(&req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to search for test runs with fields (%v): %v", fields, err)
 	}
 	return resp.SearchTestRunsWithFieldsReturn, nil
 }
 
 func (p *Polarion) QueryWorkItemsInBaseline(
-	baselineRevision, query, sortField string,
+	baselineRevision, query, sort string,
 	fields []string,
 ) ([]*tracker_ws.WorkItem, error) {
 	req := tracker_ws.QueryWorkItemsInBaseline{
 		Query:            query,
 		BaselineRevision: baselineRevision,
 		Fields:           fields,
-		Sort:             sortField,
+		Sort:             sort,
 	}
 
 	resp, err := p.TrackerWS.QueryWorkItemsInBaseline(&req)
 	if err != nil {
-		return nil, fmt.Errorf("error querying work items in baseline: %v", err)
+		return nil, fmt.Errorf("failed to query work items in baseline: %v", err)
 	}
 
 	return resp.QueryWorkItemsInBaselineReturn, nil
@@ -296,7 +299,7 @@ func (p *Polarion) QueryRevisions(query string, fields []string, sort string) ([
 
 	resp, err := p.TrackerWS.QueryRevisions(&req)
 	if err != nil {
-		return nil, fmt.Errorf("error querying revisions: %v", err)
+		return nil, fmt.Errorf("failed to query revisions: %v", err)
 	}
 
 	return resp.QueryRevisionsReturn, nil
@@ -314,24 +317,7 @@ func (p *Polarion) QueryWorkItemsInBaselineBySQL(
 
 	resp, err := p.TrackerWS.QueryWorkItemsInBaselineBySQL(&sqlReq)
 	if err != nil {
-		log.Printf("error querying work items by SQL: %v", err)
-		return nil, err
-	}
-
-	fmt.Printf(
-		"Rev in baseline sql query %v\n",
-		len(resp.QueryWorkItemsInBaselineBySQLReturn),
-	)
-
-	for i, workItem := range resp.QueryWorkItemsInBaselineBySQLReturn {
-		fmt.Printf(
-			"WI: %v %v [%v] - %v, %v\n",
-			i,
-			workItem.Id,
-			*workItem.Status.Id,
-			workItem.Title,
-			workItem.Updated.ToGoTime(),
-		)
+		return nil, fmt.Errorf("failed to query work items by SQL: %v", err)
 	}
 
 	return resp.QueryWorkItemsInBaselineBySQLReturn, nil
@@ -345,8 +331,7 @@ func (p *Polarion) GetCustomField(wiURI *tracker_ws.SubterraURI, key string) (*t
 
 	resp, err := p.TrackerWS.GetCustomField(&req)
 	if err != nil {
-		log.Printf("error GetCustomFieldKeys: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get WorkItem CustomField with key '%s': %v", key, err)
 	}
 	return resp.GetCustomFieldReturn, nil
 }
